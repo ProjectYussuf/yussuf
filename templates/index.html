@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yussuf</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════ LOBBY SCREEN -->
+<div id="screen-lobby" class="screen active">
+  <div class="lobby-wrap">
+    <div class="logo">
+      <span class="logo-suit">♠</span>
+      <h1>YUSSUF</h1>
+      <span class="logo-suit">♥</span>
+    </div>
+
+    <div class="lobby-box">
+      <div id="players-waiting">
+        <h3>Players in lobby</h3>
+        <ul id="lobby-player-list"></ul>
+        <p id="lobby-waiting-msg" class="muted">Waiting for players to join…</p>
+      </div>
+
+      <div id="join-form">
+        <input id="name-input" type="text" placeholder="Your name" maxlength="20" autocomplete="off">
+        <button id="btn-join" class="btn-primary">Join Game</button>
+      </div>
+
+      <button id="btn-start" class="btn-primary hidden">Start Game</button>
+
+      <div id="score-limit-row" class="score-limit-row hidden">
+        <label for="score-limit-select">Play until:</label>
+        <select id="score-limit-select">
+          <option value="30">30 points</option>
+          <option value="40">40 points</option>
+          <option value="50" selected>50 points (default)</option>
+          <option value="75">75 points</option>
+          <option value="100">100 points</option>
+        </select>
+        <span id="score-limit-view" class="hidden muted"></span>
+      </div>
+
+      <button id="btn-lobby-rules" class="btn-ghost" style="align-self:center; margin-top:0.3rem;">📖 How to Play</button>
+    </div>
+  </div>
+
+  <!-- Rules panel (also accessible from lobby) -->
+  <div id="lobby-rules-panel" class="rules-panel hidden">
+    <div class="rules-inner">
+      <button id="btn-lobby-rules-close" class="btn-ghost rules-close">✕ Close</button>
+      <h2>How to Play Yussuf</h2>
+      <ul>
+        <li><strong>Objective:</strong> Finish each round with the lowest total card value. Last player not eliminated wins.</li>
+        <li><strong>Card values:</strong>
+          <br>Red King (♥♦) = <strong>−1</strong>
+          <br>Joker = <strong>0</strong>
+          <br>Ace = <strong>1</strong>
+          <br>2 through 9 = <strong>face value</strong>
+          <br>10, Jack, Queen, Black King (♠♣) = <strong>10</strong>
+        </li>
+        <li><strong>Setup:</strong> Each player gets 4 cards in a 2×2 grid. You may peek at your bottom 2 cards once before play begins.</li>
+        <li><strong>Your turn:</strong> Draw from the face-down deck or the face-up discard pile, then either replace one of your cards or discard what you drew.</li>
+        <li><strong>Call Yussuf:</strong> On your turn, if your true total is 5 or lower, call Yussuf instead of drawing. Every other player gets one final turn. If your total is strictly the lowest, you get −5 bonus. If not, you get +10 penalty.</li>
+        <li><strong>Matching-discard:</strong> Any time a card lands on the discard pile, you may try to discard a card of the <em>same rank but different suit</em>. Correct = removed from your board. Wrong = you receive a punishment card. If you match an opponent's card correctly, they get it back plus a punishment card.</li>
+        <li><strong>Special cards (deck draws only):</strong> 7/8 = look at one of your own cards · 9/10 = look at one opponent card · Jack = swap any 2 cards · Queen = look at 2 cards then swap any 2.</li>
+        <li><strong>Scoring:</strong> Each round your board value is added to your score. Reach exactly 50 → score halved to 25. Exceed 50 → eliminated.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ PEEK SCREEN -->
+<div id="screen-peek" class="screen">
+  <div class="peek-wrap">
+    <h2>Round <span id="peek-round-num">1</span> — Memorise your cards</h2>
+    <p>Your <strong>top two cards</strong> are hidden. Your <strong>bottom two cards</strong> are shown below — remember them!</p>
+
+    <div class="peek-grid">
+      <!-- Top row: hidden cards -->
+      <div class="peek-card">
+        <div class="card-face hidden-card" id="peek-face-0"></div>
+        <div class="card-label">Top-Left (hidden)</div>
+      </div>
+      <div class="peek-card">
+        <div class="card-face hidden-card" id="peek-face-1"></div>
+        <div class="card-label">Top-Right (hidden)</div>
+      </div>
+      <!-- Bottom row: revealed cards -->
+      <div class="peek-card">
+        <div class="card-face" id="peek-face-2">…</div>
+        <div class="card-label">Bottom-Left</div>
+      </div>
+      <div class="peek-card">
+        <div class="card-face" id="peek-face-3">…</div>
+        <div class="card-label">Bottom-Right</div>
+      </div>
+    </div>
+
+    <button id="btn-peek-ready" class="btn-primary">I've memorised them →</button>
+    <p id="peek-wait-msg" class="muted hidden">Waiting for other players…</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ GAME SCREEN -->
+<div id="screen-game" class="screen">
+
+  <!-- Top bar: round info + scores -->
+  <header class="game-header">
+    <div class="header-left">
+      <span class="round-badge">Round <span id="round-num">1</span></span>
+      <span id="phase-badge" class="phase-badge">Playing</span>
+    </div>
+    <div class="header-center">
+      <h2 class="game-title">YUSSUF</h2>
+    </div>
+    <div class="header-right">
+      <button id="btn-pause" class="btn-ghost">⏸ Pause</button>
+      <button id="btn-rules-toggle" class="btn-ghost">Rules</button>
+    </div>
+  </header>
+
+  <!-- Score strip -->
+  <div id="score-strip"></div>
+
+  <!-- Main table -->
+  <main class="table-area">
+
+    <!-- Opponent player boards -->
+    <div id="opponents-area"></div>
+
+    <!-- Centre: deck + discard -->
+    <div class="centre-area">
+      <div class="pile-group">
+        <div id="deck-pile" class="pile deck-pile">
+          <div class="pile-back"></div>
+          <div class="pile-count"><span id="deck-count">?</span> left</div>
+        </div>
+        <div id="discard-pile" class="pile discard-pile">
+          <div id="discard-top" class="card-face empty-pile">Empty</div>
+        </div>
+      </div>
+
+      <div id="status-area">
+        <p id="status-msg">Waiting for game to start…</p>
+        <div id="action-hint" class="action-hint hidden">
+          <span id="action-hint-text"></span>
+          <button id="btn-action-cancel" class="btn-ghost btn-action-cancel">✕ Cancel</button>
+        </div>
+        <div id="window-bar" class="window-bar hidden">
+          <div id="window-fill" class="window-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Yussuf button: independent, positioned to the right of centre-area -->
+    <button id="btn-yussuf" class="btn-yussuf hidden">
+      <span class="yussuf-label">YUSSUF</span>
+      <span class="yussuf-sub">≤ 5 pts</span>
+    </button>
+
+    <!-- My board -->
+    <div class="my-area">
+      <div id="my-board" class="player-board my-board">
+        <div class="board-label">You: <span id="my-name">—</span></div>
+        <div class="board-grid" id="my-grid"></div>
+      </div>
+
+      <div id="action-bar" class="action-bar hidden"></div>
+
+      <!-- Chat panel (persistent, always accessible) -->
+      <div id="chat-panel" class="chat-panel hidden">
+        <div class="chat-header">
+          <span class="chat-title">💬 Chat</span>
+          <button id="btn-chat-close" class="chat-close-btn">✕</button>
+        </div>
+        <div id="chat-log"></div>
+        <div class="chat-phrases">
+          <button class="chat-phrase" data-msg="I need to pee! Pause? 🚽">I need to pee! 🚽</button>
+          <button class="chat-phrase" data-msg="Lucky card! 🍀">Lucky card! 🍀</button>
+          <button class="chat-phrase" data-msg="You're going DOWN! 💪">Going down! 💪</button>
+          <button class="chat-phrase" data-msg="Yussuf incoming… 🃏">Yussuf incoming 🃏</button>
+          <button class="chat-phrase" data-msg="Nice try! 😏">Nice try! 😏</button>
+          <button class="chat-phrase" data-msg="I have NO idea what I'm doing 😂">No idea 😂</button>
+          <button class="chat-phrase" data-msg="Who shuffled these cards?! 😤">Bad shuffle! 😤</button>
+          <button class="chat-phrase" data-msg="This is MY moment! ⭐">My moment! ⭐</button>
+          <button class="chat-phrase" data-msg="I'm winning… right? 🤔">Winning? 🤔</button>
+          <button class="chat-phrase" data-msg="GG! 🎉">GG! 🎉</button>
+          <button class="chat-phrase" data-msg="Ugh! 😩">Ugh! 😩</button>
+          <button class="chat-phrase" data-msg="Don't you dare matching-discard me! 🚫">Don't dare! 🚫</button>
+          <button class="chat-phrase" data-msg="My memory is terrible 🧠">Bad memory 🧠</button>
+          <button class="chat-phrase" data-msg="I forgot what my cards are 😅">Forgot cards 😅</button>
+          <button class="chat-phrase" data-msg="YUSSUF!!! 🎯">YUSSUF! 🎯</button>
+          <button class="chat-phrase" data-msg="The deck hates me 🤬">Deck hates me 🤬</button>
+        </div>
+      </div>
+
+      <!-- Floating chat bubble: always visible during the game -->
+      <button id="btn-chat-bubble" class="chat-bubble-btn">💬</button>
+
+      <div id="held-area" class="held-area hidden">
+        <div class="held-label">Card in hand:</div>
+        <div id="held-card-display" class="card-face"></div>
+        <div class="held-actions">
+          <button id="btn-discard-held" class="btn-action">Discard it</button>
+          <span class="held-hint">or click a slot on your board to replace it</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Leaderboard / Round-end overlay -->
+  <div id="round-end-overlay" class="overlay hidden">
+    <div class="overlay-box leaderboard-box">
+      <h2 id="overlay-title">Round Over</h2>
+
+      <!-- Revealed boards section -->
+      <div id="reveal-section">
+        <h3 class="section-label">Cards Revealed</h3>
+        <div id="reveal-boards"></div>
+      </div>
+
+      <!-- Round summary -->
+      <div id="overlay-yussuf-result"></div>
+
+      <!-- Leaderboard -->
+      <div id="leaderboard-section">
+        <h3 class="section-label">Leaderboard</h3>
+        <div id="overlay-scores"></div>
+      </div>
+
+      <div id="overlay-eliminated"></div>
+
+      <button id="btn-next-round" class="btn-primary">Continue →</button>
+      <div id="overlay-game-over" class="hidden">
+        <h3>🏆 Game Over!</h3>
+        <p id="overlay-winner"></p>
+        <button id="btn-game-over-exit" class="exit-btn game-over-exit-btn">🚪 Exit to Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pause overlay -->
+  <div id="pause-overlay" class="overlay hidden">
+    <div class="overlay-box pause-box">
+      <h2>⏸ Game Paused</h2>
+      <p id="pause-reason" class="muted"></p>
+
+      <img id="pause-gif" src="" alt="pause gif" class="pause-gif">
+
+      <button id="btn-pause-rules" class="btn-ghost pause-menu-btn">📖 How to Play</button>
+
+      <div class="pause-actions">
+        <div class="pause-continue-area">
+          <button id="btn-unpause" class="btn-primary">▶ Continue</button>
+          <p id="unpause-status" class="muted" style="font-size:0.78rem;margin-top:0.3rem"></p>
+        </div>
+        <div class="pause-exit-area">
+          <button id="btn-exit-vote" class="btn-ghost exit-btn">🚪 Exit Game</button>
+          <p id="exit-status" class="muted" style="font-size:0.78rem;margin-top:0.3rem"></p>
+        </div>
+      </div>
+
+      <!-- Inline rules (hidden by default) -->
+      <div id="pause-rules-content" class="pause-rules-content hidden">
+        <ul>
+          <li><strong>Objective:</strong> Finish each round with the lowest total card value.</li>
+          <li><strong>Card values:</strong> Red King = −1, Joker = 0, Ace = 1, 2–9 face value, 10/J/Q/Black K = 10.</li>
+          <li><strong>Your turn:</strong> Draw from deck or discard pile, then replace a card or discard it.</li>
+          <li><strong>Yussuf:</strong> Call it on your turn if your true total is 5 or lower. Win = −5, lose = +10.</li>
+          <li><strong>Matching-discard:</strong> Same rank, different suit. Correct own = removed. Wrong = punishment. Correct opponent = they get it back + punishment.</li>
+          <li><strong>Special cards (deck only):</strong> 7/8 look own · 9/10 look opponent · Jack swap 2 · Queen look then swap.</li>
+          <li><strong>Elimination:</strong> Score over limit = out. Exact limit = halved.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rules panel (in-game) -->
+  <div id="rules-panel" class="rules-panel hidden">
+    <div class="rules-inner">
+      <button id="btn-rules-close" class="btn-ghost rules-close">✕ Close</button>
+      <h2>Quick Rules</h2>
+      <ul>
+        <li><strong>Objective:</strong> Finish each round with the lowest total card value.</li>
+        <li><strong>Card values:</strong> Red King = −1, Joker = 0, Ace = 1, 2–9 face value, 10/J/Q/Black K = 10.</li>
+        <li><strong>Your turn:</strong> Draw from deck or discard pile, then replace a card or discard it.</li>
+        <li><strong>Yussuf:</strong> Call it on your turn if your true total is 5 or lower. Others get one final turn. Win = −5, lose = +10.</li>
+        <li><strong>Matching-discard:</strong> Same rank, different suit. Correct own = removed. Wrong own = punishment card. Correct opponent = they get card back + punishment.</li>
+        <li><strong>Special cards (deck only):</strong> 7/8 look own · 9/10 look opponent · Jack swap 2 · Queen look then swap.</li>
+        <li><strong>Elimination:</strong> Over 50 points = out. Exactly 50 = halved to 25.</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+<script src="/static/game.js"></script>
+</body>
+</html>
