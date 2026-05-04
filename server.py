@@ -16,8 +16,10 @@ from engine import GameEngine
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'yussuf-secret-2024')
-# async_mode='threading' for local dev; production uses gevent or eventlet via gunicorn worker.
-socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
+# async_mode: gevent in production (under gunicorn), threading locally.
+# Detected via PORT env var which Render/Heroku/etc. set automatically.
+_ASYNC_MODE = 'gevent' if os.environ.get('PORT') else 'threading'
+socketio = SocketIO(app, cors_allowed_origins='*', async_mode=_ASYNC_MODE)
 
 # ── Game state ────────────────────────────────────────────────────────────────
 engine            = GameEngine()
