@@ -1594,3 +1594,34 @@ input[type="text"]::placeholder { color: var(--muted); }
 
 /* Reveal-cards (leaderboard) and other smaller variants automatically scale
    because object-fit: contain keeps aspect ratio inside any container size */
+
+/* ── Elimination threshold indicator in score strip ───────────────── */
+.score-limit-chip {
+  margin-left: auto;        /* push to far right of score-strip */
+  padding: 0.4rem 0.8rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.72rem;
+  color: rgba(232, 201, 106, 0.7);
+  border-left: 1px solid rgba(200,169,81,0.2);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ── Limit note in round-end scoreboard ───────────────────────────── */
+.overlay-limit-note {
+  text-align: center;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.85rem;
+  color: rgba(232, 201, 106, 0.85);
+  padding: 0.5rem 0.8rem;
+  margin-bottom: 0.8rem;
+  background: rgba(200, 169, 81, 0.08);
+  border: 1px solid rgba(200, 169, 81, 0.25);
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+}
+.overlay-limit-note strong {
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 1.05em;
+}

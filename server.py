@@ -28,6 +28,22 @@ sockets_by_player = {}   # player_index -> socket_id
 GAME_ROOM         = 'yussuf_main'
 HOST_PLAYER_INDEX = 0
 
+# ── Action card pending effect tracking ──────────────────────────────────────
+# Set when a special_effect_prompt is emitted; cleared when the effect resolves.
+# Used to block matching-discard against the active player while they're
+# stuck choosing a target for an action card (7,8,9,10,J,Q).
+pending_special_effect = None   # one of: None, 'look_own', 'look_opponent', 'jack', 'queen'
+
+def has_pending_action_effect():
+    """True if the active player is mid-special-effect (waiting on their input)."""
+    if pending_special_effect is not None:
+        return True
+    if engine.pending_effect is not None:
+        return True
+    if getattr(engine, '_queen_step1', None) is not None:
+        return True
+    return False
+
 # ── Ready-for-next-round tracking ─────────────────────────────────────────────
 players_ready_for_next = set()
 
@@ -305,6 +321,8 @@ def on_discard_held():
     socketio.emit('card_discarded', result, room=GAME_ROOM)
     broadcast_state()
     if result.get('special_effect'):
+        global pending_special_effect
+        pending_special_effect = result['special_effect']
         emit('special_effect_prompt', {'effect': result['special_effect'], 'discard_top': result['discard_top']})
     else:
         start_window_timer(owner_index=pi)
@@ -331,10 +349,12 @@ def on_call_yussuf():
 
 @socketio.on('cancel_effect')
 def on_cancel_effect():
+    global pending_special_effect
     pi = get_pi(request.sid)
     if pi is None:                         return emit_error('You are not in this game')
     if pi != engine.current_player_index:  return emit_error('It is not your turn')
     engine.pending_effect = None
+    pending_special_effect = None
     engine.advance_turn_after_window()
     socketio.emit('effect_cancelled', {'player_index': pi}, room=GAME_ROOM)
     broadcast_state()
@@ -348,12 +368,14 @@ def on_cancel_effect():
 
 @socketio.on('effect_look_own')
 def on_effect_look_own(data):
+    global pending_special_effect
     pi   = get_pi(request.sid)
     if pi is None:                         return emit_error('You are not in this game')
     if pi != engine.current_player_index:  return emit_error('It is not your turn')
     slot   = int(data.get('slot', -1))
     result = engine.effect_look_own(pi, slot)
     if not result['ok']: return emit_error(result['error'])
+    pending_special_effect = None
     emit('look_result', result)
     socketio.emit('card_peeked', {'looker': pi, 'target_player': pi, 'slot': slot}, room=GAME_ROOM)
     start_window_timer(owner_index=pi)
@@ -362,6 +384,7 @@ def on_effect_look_own(data):
 
 @socketio.on('effect_look_opponent')
 def on_effect_look_opponent(data):
+    global pending_special_effect
     pi     = get_pi(request.sid)
     if pi is None:                         return emit_error('You are not in this game')
     if pi != engine.current_player_index:  return emit_error('It is not your turn')
@@ -369,6 +392,7 @@ def on_effect_look_opponent(data):
     slot   = int(data.get('slot', -1))
     result = engine.effect_look_opponent(pi, target, slot)
     if not result['ok']: return emit_error(result['error'])
+    pending_special_effect = None
     emit('look_result', result)
     socketio.emit('card_peeked', {'looker': pi, 'target_player': target, 'slot': slot}, room=GAME_ROOM)
     start_window_timer(owner_index=pi)
@@ -377,13 +401,26 @@ def on_effect_look_opponent(data):
 
 @socketio.on('effect_jack_swap')
 def on_effect_jack_swap(data):
+    global pending_special_effect
     pi = get_pi(request.sid)
     if pi is None:                         return emit_error('You are not in this game')
     if pi != engine.current_player_index:  return emit_error('It is not your turn')
     p1, s1 = int(data['p1']), int(data['s1'])
     p2, s2 = int(data['p2']), int(data['s2'])
     result = engine.effect_jack_swap(p1, s1, p2, s2)
-    if not result['ok']: return emit_error(result['error'])
+    if not result['ok']:
+        emit_error(result['error'])
+        # Player used their action card — even if the swap target was invalid,
+        # the turn is consumed. Advance to next player.
+        engine.pending_effect = None
+        pending_special_effect = None
+        engine.advance_turn_after_window()
+        socketio.emit('effect_cancelled', {'player_index': pi}, room=GAME_ROOM)
+        broadcast_state()
+        if engine.phase in ('round_end', 'game_over'):
+            socketio.emit('round_ended', engine.last_round_result, room=GAME_ROOM)
+        return
+    pending_special_effect = None
     socketio.emit('swap_result', result, room=GAME_ROOM)
     start_window_timer(owner_index=pi)
     broadcast_state()
@@ -433,6 +470,7 @@ def on_effect_queen_look_step2(data):
     """
     Queen step-by-step: player clicked the SECOND card. Complete the queen look.
     """
+    global pending_special_effect
     pi = get_pi(request.sid)
     if pi is None:                         return emit_error('You are not in this game')
     if pi != engine.current_player_index:  return emit_error('It is not your turn')
@@ -442,8 +480,20 @@ def on_effect_queen_look_step2(data):
     p2, s2 = int(data['p2']), int(data['s2'])
     # Now do the full engine queen_look
     result = engine.effect_queen_look(p1, s1, p2, s2)
-    if not result['ok']: return emit_error(result['error'])
+    if not result['ok']:
+        emit_error(result['error'])
+        # Player used their action card — turn is consumed.
+        engine.pending_effect = None
+        engine._queen_step1 = None
+        pending_special_effect = None
+        engine.advance_turn_after_window()
+        socketio.emit('effect_cancelled', {'player_index': pi}, room=GAME_ROOM)
+        broadcast_state()
+        if engine.phase in ('round_end', 'game_over'):
+            socketio.emit('round_ended', engine.last_round_result, room=GAME_ROOM)
+        return
     engine._queen_step1 = None
+    # Note: pending_special_effect stays set until queen_swap resolves
     # Send full result (both cards) to the acting player
     emit('queen_look_result', result)
     socketio.emit('card_peeked', {'looker': pi, 'target_player': p2, 'slot': s2}, room=GAME_ROOM)
@@ -452,13 +502,27 @@ def on_effect_queen_look_step2(data):
 
 @socketio.on('effect_queen_swap')
 def on_effect_queen_swap(data):
+    global pending_special_effect
     pi = get_pi(request.sid)
     if pi is None:                         return emit_error('You are not in this game')
     if pi != engine.current_player_index:  return emit_error('It is not your turn')
     p1, s1 = int(data['p1']), int(data['s1'])
     p2, s2 = int(data['p2']), int(data['s2'])
     result = engine.effect_queen_swap(p1, s1, p2, s2)
-    if not result['ok']: return emit_error(result['error'])
+    if not result['ok']:
+        emit_error(result['error'])
+        # Player used their action card — even if the swap target was invalid,
+        # the turn is consumed. Advance to next player.
+        engine.pending_effect = None
+        engine._queen_step1 = None
+        pending_special_effect = None
+        engine.advance_turn_after_window()
+        socketio.emit('effect_cancelled', {'player_index': pi}, room=GAME_ROOM)
+        broadcast_state()
+        if engine.phase in ('round_end', 'game_over'):
+            socketio.emit('round_ended', engine.last_round_result, room=GAME_ROOM)
+        return
+    pending_special_effect = None
     socketio.emit('swap_result', result, room=GAME_ROOM)
     start_window_timer(owner_index=pi)
     broadcast_state()
@@ -482,6 +546,15 @@ def on_matching_discard(data):
     # for 2 seconds after placing. Everyone else has no restriction.
     if not is_own and is_window_active() and pi == discard_owner:
         return emit_error('This action is not allowed yet')
+
+    # Block matching-discard against an opponent who is mid-action-effect
+    # (currently choosing a target for 7/8/9/10/Jack/Queen). The action card
+    # owner is "stuck" in interaction phase — others must wait until it resolves.
+    if not is_own:
+        active_idx = engine.current_player_index
+        if has_pending_action_effect() and target_player == active_idx:
+            return emit_error('This action is not allowed')
+
     result = engine.action_matching_discard(pi, target_player, slot)
     if not result['ok']:
         return emit_error(result['error'])
@@ -584,7 +657,7 @@ def on_game_over_exit():
     """Player pressed Exit on the game-over screen. No vote needed — game is finished."""
     global engine, players_by_socket, sockets_by_player
     global players_ready_for_next, players_ready_unpause, players_want_exit
-    global game_paused, inactivity_timer
+    global game_paused, inactivity_timer, pending_special_effect
     if engine.phase != 'game_over':
         return  # only valid after game is over
     # Cancel all timers
@@ -599,6 +672,7 @@ def on_game_over_exit():
     players_ready_unpause  = set()
     players_want_exit      = set()
     game_paused            = False
+    pending_special_effect = None
     socketio.emit('game_exit', {}, room=GAME_ROOM)
 
 

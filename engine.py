@@ -903,6 +903,7 @@ class GameEngine:
             'current_player_index':  self.current_player_index,
             'yussuf_caller_index':   self.yussuf_caller_index,
             'final_turns_remaining': self.final_turns_remaining,
+            'score_limit':           self.score_limit,
             'discard_top':           self._card_info(self.get_top_discard()),
             'deck_size':             self.deck.size() if self.deck else 0,
             'held_card': (

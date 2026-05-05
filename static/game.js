@@ -688,6 +688,14 @@ function buildScoreStrip(state) {
     chip.innerHTML = `<span class="chip-name">${p.name}</span><span class="chip-score">${p.score}</span>`;
     scoreStrip.appendChild(chip);
   });
+  // Show the elimination threshold as a small label after the chips
+  const limit = state.score_limit ?? scoreLimit;
+  if (limit) {
+    const limitChip = document.createElement('div');
+    limitChip.className = 'score-limit-chip';
+    limitChip.innerHTML = `<span class="limit-text">Eliminated if points &gt; ${limit}</span>`;
+    scoreStrip.appendChild(limitChip);
+  }
 }
 
 function setStatus(msg) { statusMsg.textContent = msg; }
@@ -1468,6 +1476,15 @@ function showRoundEnd(result) {
   overlayScores.innerHTML = '';
   const history = result.round_history || [];
   const allPis  = gameState ? gameState.players.map((_, i) => i) : [];
+
+  // Show the elimination threshold above the score table
+  const limit = result.score_limit ?? gameState?.score_limit ?? scoreLimit;
+  if (limit) {
+    const limitNote = document.createElement('div');
+    limitNote.className = 'overlay-limit-note';
+    limitNote.innerHTML = `<span>Playing to <strong>${limit}</strong> · Eliminated if points &gt; ${limit}</span>`;
+    overlayScores.appendChild(limitNote);
+  }
 
   if (history.length > 0 && allPis.length > 0) {
     const tableWrap = document.createElement('div');
