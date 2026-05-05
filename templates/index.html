@@ -77,32 +77,41 @@
 <!-- ═══════════════════════════════════════════════════ PEEK SCREEN -->
 <div id="screen-peek" class="screen">
   <div class="peek-wrap">
-    <h2>Round <span id="peek-round-num">1</span> — Memorise your cards</h2>
-    <p>Your <strong>top two cards</strong> are hidden. Your <strong>bottom two cards</strong> are shown below — remember them!</p>
-
-    <div class="peek-grid">
-      <!-- Top row: hidden cards -->
-      <div class="peek-card">
-        <div class="card-face hidden-card" id="peek-face-0"></div>
-        <div class="card-label">Top-Left (hidden)</div>
-      </div>
-      <div class="peek-card">
-        <div class="card-face hidden-card" id="peek-face-1"></div>
-        <div class="card-label">Top-Right (hidden)</div>
-      </div>
-      <!-- Bottom row: revealed cards -->
-      <div class="peek-card">
-        <div class="card-face" id="peek-face-2">…</div>
-        <div class="card-label">Bottom-Left</div>
-      </div>
-      <div class="peek-card">
-        <div class="card-face" id="peek-face-3">…</div>
-        <div class="card-label">Bottom-Right</div>
-      </div>
+    <!-- Spectator message: shown only when local player is eliminated -->
+    <div id="peek-eliminated" class="peek-eliminated hidden">
+      <h2>💀 You were eliminated</h2>
+      <p>Wait for the remaining players to memorise their cards…</p>
     </div>
 
-    <button id="btn-peek-ready" class="btn-primary">I've memorised them →</button>
-    <p id="peek-wait-msg" class="muted hidden">Waiting for other players…</p>
+    <!-- Active player content: hidden when local player is eliminated -->
+    <div id="peek-active-content">
+      <h2>Round <span id="peek-round-num">1</span> — Memorise your cards</h2>
+      <p>Your <strong>top two cards</strong> are hidden. Your <strong>bottom two cards</strong> are shown below — remember them!</p>
+
+      <div class="peek-grid">
+        <!-- Top row: hidden cards -->
+        <div class="peek-card">
+          <div class="card-face hidden-card" id="peek-face-0"></div>
+          <div class="card-label">Top-Left (hidden)</div>
+        </div>
+        <div class="peek-card">
+          <div class="card-face hidden-card" id="peek-face-1"></div>
+          <div class="card-label">Top-Right (hidden)</div>
+        </div>
+        <!-- Bottom row: revealed cards -->
+        <div class="peek-card">
+          <div class="card-face" id="peek-face-2">…</div>
+          <div class="card-label">Bottom-Left</div>
+        </div>
+        <div class="peek-card">
+          <div class="card-face" id="peek-face-3">…</div>
+          <div class="card-label">Bottom-Right</div>
+        </div>
+      </div>
+
+      <button id="btn-peek-ready" class="btn-primary">I've memorised them →</button>
+      <p id="peek-wait-msg" class="muted hidden">Waiting for other players…</p>
+    </div>
   </div>
 </div>
 

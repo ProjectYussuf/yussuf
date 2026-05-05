@@ -1625,3 +1625,35 @@ input[type="text"]::placeholder { color: var(--muted); }
   font-weight: 700;
   font-size: 1.05em;
 }
+
+/* ── Spectator mode ───────────────────────────────────────────────────
+   Eliminated player has no board / actions — just watches the table */
+.my-area.spectator-hidden {
+  display: none !important;
+}
+
+/* When the eliminated player is shown alongside opponents, give them a
+   subtle visual hint that they're the spectator's "slot"  */
+.player-board.is-spectator-self {
+  outline: 1px dashed rgba(232, 201, 106, 0.3);
+}
+
+/* ── Peek screen: eliminated player message ───────────────────────────
+   Shown instead of the cards/button when local player is a spectator */
+.peek-eliminated {
+  text-align: center;
+  padding: 2rem 1rem;
+}
+.peek-eliminated h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.8rem;
+  color: var(--gold);
+  margin-bottom: 1rem;
+  letter-spacing: 0.04em;
+}
+.peek-eliminated p {
+  font-family: 'DM Mono', monospace;
+  font-size: 1rem;
+  color: rgba(232, 201, 106, 0.75);
+  letter-spacing: 0.03em;
+}

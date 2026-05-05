@@ -655,8 +655,13 @@ function buildMyBoard(state) {
 
 function buildOpponents(state) {
   opponentsArea.innerHTML = '';
+  const amEliminated = (myPlayerIndex !== null && state.players[myPlayerIndex]?.eliminated);
   state.players.forEach((player, pi) => {
-    if (pi === myPlayerIndex || player.eliminated) return;
+    // Normally skip self and eliminated players.
+    // SPECTATOR MODE: when I'm eliminated, show ALL non-eliminated players
+    // (including the slot that would normally be "me") so I can watch the game.
+    if (player.eliminated) return;
+    if (pi === myPlayerIndex && !amEliminated) return;
     const isCurrent = (pi === state.current_player_index);
     const wrap  = document.createElement('div');
     wrap.className = 'player-board' + (isCurrent ? ' is-current-player' : '');
@@ -812,13 +817,19 @@ function applyStateUpdate(state) {
   renderCardFace(state.discard_top, discardTop);
   buildScoreStrip(state);
   buildOpponents(state);
-  if (myPlayerIndex !== null) buildMyBoard(state);
+  // SPECTATOR MODE: when I'm eliminated, hide my own board area and all
+  // active-player UI (yussuf button, action bar). I just watch from the
+  // opponents area which now also shows the slot that used to be "me".
+  const amEliminated = (myPlayerIndex !== null && state.players[myPlayerIndex]?.eliminated);
+  const myArea = document.querySelector('.my-area');
+  if (myArea) myArea.classList.toggle('spectator-hidden', amEliminated);
+  if (myPlayerIndex !== null && !amEliminated) buildMyBoard(state);
   flushAnimQueue();
   applyFlipSwap();
   if (isMyTurn && state.held_card && !state.held_card?.hidden) heldCard = state.held_card;
-  // Yussuf button: visible only on my turn, no card held, no pending effect
+  // Yussuf button: visible only on my turn, no card held, no pending effect, NOT spectator
   const showYussuf = isMyTurn && !heldCard && !pendingEffect && !turnCompleted
-    && ['playing','final_turns'].includes(state.phase);
+    && ['playing','final_turns'].includes(state.phase) && !amEliminated;
   btnYussuf?.classList.toggle('hidden', !showYussuf);
   // Position Yussuf button vertically centred with the discard pile
   // Always position Yussuf button aligned with the pile group vertical centre
@@ -840,7 +851,10 @@ function applyStateUpdate(state) {
     const canDiscard = isMyTurn && !!heldCard;
     discardPileEl.classList.toggle('pile-drawable', (canDraw && !!state.discard_top) || canDiscard);
   }
-  if (!isMyTurn) {
+  if (amEliminated) {
+    const cName = state.players[state.current_player_index]?.name || '?';
+    setStatus(`💀 Eliminated — spectating ${cName}'s turn`);
+  } else if (!isMyTurn) {
     const cName = state.players[state.current_player_index]?.name || '?';
     setStatus(state.phase === 'final_turns' ? `Final turns — ${cName} is playing (${state.final_turns_remaining} left)` : `${cName}'s turn`);
   } else {
@@ -1015,7 +1029,19 @@ btnPauseRules.addEventListener('click', () => pauseRulesContent.classList.toggle
 // SOCKET EVENTS
 // =============================================================================
 
-socket.on('connect',    () => console.log('[socket] connected'));
+socket.on('connect',    () => {
+  console.log('[socket] connected');
+  // Auto-rejoin attempt: if we previously joined this game, try to resume.
+  // The server distinguishes between "first-time join" (waiting phase) and
+  // "resume by name" (game in progress) automatically.
+  if (myPlayerIndex === null) {
+    let storedName = null;
+    try { storedName = localStorage.getItem('yussuf_player_name'); } catch (e) {}
+    if (storedName) {
+      socket.emit('join_game', { name: storedName });
+    }
+  }
+});
 socket.on('disconnect', () => toast('Disconnected — try refreshing', 'error'));
 
 socket.on('joined', data => {
@@ -1023,7 +1049,13 @@ socket.on('joined', data => {
   myName        = data.name;
   isHost        = data.is_host;
   scoreLimit    = data.score_limit || 50;
-  toast(`Joined as ${myName}`, 'good');
+  // Persist for page-refresh recovery
+  try { localStorage.setItem('yussuf_player_name', myName); } catch (e) {}
+  if (data.resumed) {
+    toast(`Reconnected as ${myName}`, 'good');
+  } else {
+    toast(`Joined as ${myName}`, 'good');
+  }
   document.getElementById('join-form').style.display = 'none';
   btnStart.classList.remove('hidden');
   scoreLimitRow.classList.remove('hidden');
@@ -1073,11 +1105,25 @@ socket.on('round_started', data => {
   clearInterval(windowTimer); windowBar.classList.add('hidden');
   if (data.score_limit) scoreLimit = data.score_limit;
   if (myPlayerIndex !== null) {
-    peekRoundNum.textContent = data.round_number;
-    peekFace2.textContent = '…'; peekFace3.textContent = '…';
-    peekFace2.className = 'card-face'; peekFace3.className = 'card-face';
-    btnPeekReady.disabled = false; peekWaitMsg.classList.add('hidden');
-    showScreen('screen-peek'); socket.emit('send_peek_cards');
+    // Detect if local player is eliminated — they get a spectator message,
+    // not the peek interface.
+    const meEliminated = !!(gameState && gameState.players[myPlayerIndex]?.eliminated);
+    const peekEliminated = document.getElementById('peek-eliminated');
+    const peekActive     = document.getElementById('peek-active-content');
+    if (meEliminated) {
+      peekEliminated?.classList.remove('hidden');
+      peekActive?.classList.add('hidden');
+      showScreen('screen-peek');
+      // Don't emit send_peek_cards for eliminated players — they have no cards
+    } else {
+      peekEliminated?.classList.add('hidden');
+      peekActive?.classList.remove('hidden');
+      peekRoundNum.textContent = data.round_number;
+      peekFace2.textContent = '…'; peekFace3.textContent = '…';
+      peekFace2.className = 'card-face'; peekFace3.className = 'card-face';
+      btnPeekReady.disabled = false; peekWaitMsg.classList.add('hidden');
+      showScreen('screen-peek'); socket.emit('send_peek_cards');
+    }
   }
 });
 
@@ -1097,9 +1143,15 @@ socket.on('state_update', state => {
   } else if (state.phase !== 'final_turns' && tensionActive) {
     exitYussufTension();
   }
-  // Always switch to game screen when playing (fixes round 2+ transition)
+  // Always switch to game screen when playing (fixes round 2+ transition + page-refresh resume)
   if (['playing','final_turns'].includes(state.phase)) {
     roundEndOverlay.classList.add('hidden');
+    if (!screenGame.classList.contains('active')) {
+      showScreen('screen-game');
+      btnChatBubble.classList.remove('hidden');
+    }
+  } else if (state.phase === 'round_end' && myPlayerIndex !== null) {
+    // Resume into a round-end state: show the scoreboard
     if (!screenGame.classList.contains('active')) {
       showScreen('screen-game');
       btnChatBubble.classList.remove('hidden');
@@ -1342,7 +1394,17 @@ socket.on('round_ended', result => {
   showRoundEnd(result);
 });
 
-socket.on('error', data => toast(data.message, 'error'));
+socket.on('error', data => {
+  // If auto-rejoin failed (e.g. server restart, or name taken by someone else),
+  // clear the stored name so the user can manually join fresh.
+  if (myPlayerIndex === null && data.message && (
+      data.message.includes('already taken') ||
+      data.message.includes('cannot join'))) {
+    try { localStorage.removeItem('yussuf_player_name'); } catch (e) {}
+    return;  // suppress the toast — fall through to lobby
+  }
+  toast(data.message, 'error');
+});
 
 socket.on('special_effect_prompt', data => {
   if (!isMyTurn || pendingEffect) return;
@@ -1370,6 +1432,8 @@ socket.on('game_exit', () => {
   roundEndOverlay.classList.add('hidden');
   chatPanel.classList.add('hidden');
   chatLog.innerHTML = '';
+  // Clear refresh-recovery storage — game has ended cleanly
+  try { localStorage.removeItem('yussuf_player_name'); } catch (e) {}
   // Hide chat bubble and Yussuf button (game-only elements)
   btnChatBubble?.classList.add('hidden');
   btnYussuf?.classList.add('hidden');

@@ -189,7 +189,34 @@ def on_join_game(data):
     if not name:                 return emit_error('Please enter a name')
     if sid in players_by_socket: return emit_error('You are already seated')
 
-    # Reject duplicate names (case-insensitive)
+    # ── Reconnect path (only after game has started) ──────────────────────────
+    # If a player with this name already exists AND the game is in progress,
+    # treat this as a page-refresh: rebind their player slot to the new socket.
+    # Game state is preserved.
+    if engine.phase != 'waiting':
+        for pi, p in enumerate(engine.players):
+            if p.name.lower() == name.lower():
+                # Found their existing slot — transfer to the new socket
+                old_sid = sockets_by_player.get(pi)
+                if old_sid and old_sid in players_by_socket:
+                    players_by_socket.pop(old_sid, None)
+                players_by_socket[sid] = pi
+                sockets_by_player[pi]  = sid
+                join_room(GAME_ROOM)
+                is_host = (pi == HOST_PLAYER_INDEX)
+                emit('joined', {
+                    'player_index': pi, 'name': p.name, 'is_host': is_host,
+                    'score_limit': engine.score_limit, 'resumed': True,
+                })
+                socketio.emit('player_reconnected', {'player_index': pi}, room=GAME_ROOM)
+                broadcast_state()
+                return
+        # Game in progress and name doesn't match anyone — reject
+        return emit_error('Game already in progress — cannot join as a new player')
+
+    # ── Fresh join path (waiting phase only) ──────────────────────────────────
+    # Reject duplicate names (case-insensitive) — two distinct players cannot
+    # share the same name in the lobby.
     existing = [p.name.lower() for p in engine.players]
     if name.lower() in existing:
         return emit_error(f'The name "{name}" is already taken — please choose a different name')
@@ -198,6 +225,7 @@ def on_join_game(data):
     pi = result['player_index']
     players_by_socket[sid] = pi
     sockets_by_player[pi]  = sid
+    join_room(GAME_ROOM)
     is_host = (pi == HOST_PLAYER_INDEX)
     emit('joined', {'player_index': pi, 'name': name, 'is_host': is_host, 'score_limit': engine.score_limit})
     broadcast_state()
@@ -537,14 +565,20 @@ def on_matching_discard(data):
     pi = get_pi(request.sid)
     if pi is None: return emit_error('You are not in this game')
     if game_paused: return emit_error('Game is paused')
+    # Eliminated players are spectators — cannot interact with the game
+    if engine.players[pi].eliminated: return emit_error('You are eliminated — spectating only')
     reset_inactivity_timer()
     target_player = int(data.get('target_player', pi))
     slot          = int(data.get('slot', -1))
     is_own        = (pi == target_player)
 
-    # The player who placed the card (discard_owner) cannot target opponents
-    # for 2 seconds after placing. Everyone else has no restriction.
-    if not is_own and is_window_active() and pi == discard_owner:
+    # 2-second protection window after a card is placed on the discard pile.
+    # During this window:
+    #   - Own-card matching-discards are always allowed (the placer gets first
+    #     chance to matching-discard their own cards)
+    #   - Cross-player matching-discards (targeting any other player) are blocked
+    # After the window expires, anyone can matching-discard anyone's card.
+    if not is_own and is_window_active():
         return emit_error('This action is not allowed yet')
 
     # Block matching-discard against an opponent who is mid-action-effect
